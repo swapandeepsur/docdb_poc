@@ -1,0 +1,62 @@
+PROJECT_FILE = project.yml
+export PROJECT = $(shell awk '/name: / { print $$2; exit }' ${PROJECT_FILE})
+export VERSION = $(shell awk '/version: / { print $$2; exit }' ${PROJECT_FILE})
+export PRERELEASE ?= $(shell awk '/pretag: / { print $$2; exit }' ${PROJECT_FILE})
+IMPORT_PATH = $(shell awk '/import: / { print $$2; exit }' ${PROJECT_FILE})
+
+TEST_PKG ?=
+TEST_NAME ?=
+GOTESTSUM_FORMAT ?=
+
+DEVELOPER ?= $(shell whoami)
+
+BRANCH_NAME ?= $(shell git rev-parse --abbrev-ref HEAD)
+JENKINS_HOME ?=
+ifeq ($(strip $(JENKINS_HOME)),)
+    CI_ENABLED := 0
+else
+    CI_ENABLED := 1
+endif
+
+RELEASE_TYPE ?=
+TAG_TYPE ?= ${PRERELEASE}
+
+
+# Windows environment?
+CYG_CHECK := $(shell hash cygpath 2>/dev/null && echo 1)
+# WSL environment?
+WSL_CHECK := $(shell grep -qE "Microsoft" /proc/version 2>/dev/null && echo 1)
+ifeq ($(CYG_CHECK),1)
+	VBOX_CHECK := $(shell hash VBoxManage 2>/dev/null && echo 1)
+
+	# Docker Toolbox (pre-Windows 10)
+	ifeq ($(VBOX_CHECK),1)
+		ROOT := /${PROJECT}
+	else
+		# Docker Windows
+		ROOT := $(shell cygpath -m -a "$(shell pwd)")
+	endif
+else ifeq ($(WSL_CHECK),1)
+	# requires drives shared in Docker for Windows settings
+	ROOT := $(strip $(shell cmd.exe /c cd | sed -e 's/\\/\//g'))
+else
+	# all non-windows environments
+	ROOT := $(shell pwd)
+endif
+
+DEV_IMAGE := ${PROJECT}_dev
+
+DOCKERRUN := docker run --rm \
+	-e PROJECT_FILE="${PROJECT_FILE}" \
+	-e VERSION="${VERSION}" \
+	-e PRERELEASE="${PRERELEASE}" \
+	-e RELEASE_TYPE="${RELEASE_TYPE}" \
+	-e TAG_TYPE="${TAG_TYPE}" \
+	-e TEST_PKG="${TEST_PKG}" \
+	-e TEST_NAME="${TEST_NAME}" \
+	-e GOTESTSUM_FORMAT="${GOTESTSUM_FORMAT}" \
+	-e BRANCH_NAME="${BRANCH_NAME}" \
+	-v ${ROOT}/.mod:/go/pkg/mod \
+	-v ${ROOT}:/usr/src/${PROJECT} \
+	-w /usr/src/${PROJECT} \
+	${DEV_IMAGE}

@@ -1,0 +1,118 @@
+#!groovy
+// https://www.jenkins.io/doc/book/pipeline/pipeline-best-practices/
+// https://support.cloudbees.com/hc/en-us/articles/230922208-Pipeline-Best-Practices-References
+pipeline {
+	agent any
+
+	options {
+		buildDiscarder(logRotator(daysToKeepStr: '7', numToKeepStr: '100'))
+	}
+
+	environment {
+		WEBEX_TEAMS_ROOM_ID = loadConfig('WEBEX_TEAMS_ROOM_ID')
+		BOT_PWD_MASK = credentials('mcmp-bot-creds')
+	}
+
+	triggers {
+		pollSCM('H H 10 5 *')
+	}
+
+	stages {
+		// Run all test code and generate coverage metrics.
+		stage('Test') {
+			steps {
+				notifyBuildStart()
+
+				script {
+					if(env.BRANCH_NAME == 'develop' || env.BRANCH_NAME == 'master') {
+						sh "git checkout ${env.BRANCH_NAME} && git pull origin ${env.BRANCH_NAME}"
+					}
+
+					try {
+						sh 'make veryclean && make cover'
+					}
+					catch(ex) {
+						// perform extended workspace cleanup and retry tests
+						sh 'make dockerclean && make cover'
+					}
+				}
+			}
+
+			post {
+				unsuccessful {
+          // capture test results on failure so tests tab still populated
+          junit testResults: 'test.xml'
+				}
+			}
+		}
+
+		// Perform code quality analysis and static security scan.
+		stage('Quality Gate') {
+			steps {
+        // grab test results before running cobertura, so tests tab is populated in case cobertura fails
+        junit testResults: 'test.xml', healthScaleFactor: 1.0
+
+				cobertura(
+					coberturaReportFile: 'coverage.xml',
+					enableNewApi: true,
+					conditionalCoverageTargets: '100.0,0.0,80.0',
+					packageCoverageTargets: '100.0,0.0,80.0',
+					methodCoverageTargets: '100.0,0.0,80.0',
+					lineCoverageTargets: '100.0,0.0,80.0',
+					autoUpdateStability: false,
+					autoUpdateHealth: false
+				)
+
+				// SonarQube scan requires 'sonar-project.properties' at the workspace root (instead of cover/)
+				sh 'cp cover/sonar-project.properties . || :'
+				sonarScan(sonarServer: 'Sonar', sparkRoom: env.WEBEX_TEAMS_ROOM_ID)
+				sh 'rm -f sonar-project.properties'
+
+				script {
+					if(env.BRANCH_NAME == 'develop') {
+						staticSecurityScan(sparkroomid: env.WEBEX_TEAMS_ROOM_ID, stackName: 'MCMP')
+					}
+				}
+			}
+		}
+
+		// Increment version tags in git for the new commit to develop.
+		stage('Tag Version') {
+			when {
+				not { changeRequest() }
+				branch 'develop'
+			}
+
+			steps {
+				script {
+					// prevent commits from being tagged out of order
+					// TODO (ryclarke): Add a lock here to avoid tag conflicts (req. "Lockable Resources" plugin)
+					milestone(0)
+					sh 'git fetch --tags && make tag-build && git push --tags'
+				}
+			}
+		}
+	}
+
+	post {
+		always {
+			notifyBuildEnd()
+
+			// perform workspace cleanup after all stages have finished
+			sh 'make dockerclean || :'
+			cleanWs()
+		}
+	}
+}
+
+// find a config file and extract the value of a given key (expects a properties file in 'key=value' format)
+def loadConfig(String key, String config_file = 'mcmp-env') {
+	configFileProvider([configFile(fileId: config_file, variable: 'ENV_FILE')]) {
+		kv = sh(script: "cat ${env.ENV_FILE} | grep '^${key}='", returnStdout: true).trim()
+		if( kv.indexOf('=') > 0 ) {
+			return kv.split('=')[1]
+		}
+
+		return null
+	}
+}

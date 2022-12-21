@@ -1,0 +1,6 @@
+metadata:
+  name: errors
+  import: gitscm.cisco.com/mcmp/errors
+  version: 0.7.0
+  pretag: ""
+  versioned: []

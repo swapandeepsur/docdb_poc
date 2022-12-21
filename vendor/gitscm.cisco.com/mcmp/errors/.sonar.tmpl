@@ -1,0 +1,11 @@
+sonar.projectKey=mcmp:errors
+sonar.projectName=errors
+sonar.projectVersion={{ .APP_VERSION }}
+sonar.language=go
+sonar.sourceEncoding=UTF-8
+sonar.sources=.
+sonar.exclusions=vendor/**/*
+sonar.go.coverage.reportPaths=cover/cover.out
+sonar.tests=.
+sonar.test.inclusions=**/*_test.go
+sonar.test.exclusions=**/vendor/**

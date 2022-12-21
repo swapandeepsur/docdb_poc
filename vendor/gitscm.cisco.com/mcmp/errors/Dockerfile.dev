@@ -1,0 +1,8 @@
+FROM containers.cisco.com/mcmp/golang-dev-next
+
+ARG DEVELOPER
+
+RUN git config --global user.name "${DEVELOPER}" \
+    && git config --global user.email "${DEVELOPER}@cisco.com" \
+    && git config --global core.fileMode false \
+    && git config --list
