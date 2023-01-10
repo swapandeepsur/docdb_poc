@@ -38,13 +38,13 @@ func main() {
 	}
 
 	// save data
-	if err = database.SaveData(context.TODO(), bson.M{"name": "Runon MCMP"}); err != nil {
+	if err = database.SaveData(context.TODO(), bson.M{"name": "Runon MCMP Test"}); err != nil {
 		panic(err)
 	}
 }
 
 func (c *client) SaveData(ctx context.Context, object bson.M) error {
-	collection := c.dbc.Collection("collection-name")
+	collection := c.dbc.Collection("collection")
 
 	// insert record
 	res, err := collection.InsertOne(context.TODO(), object)
