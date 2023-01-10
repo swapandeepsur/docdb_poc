@@ -70,8 +70,8 @@ const (
 
 // New uses the common configurations defined in config package to configuration a client
 // for the specified database name.
-func New(ctx context.Context, flag bool, picks ...Selector) (*mongo.Database, error) {
-	if flag {
+func New(ctx context.Context, picks ...Selector) (*mongo.Database, error) {
+	if ctx.Value("flag").(bool) {
 		connectionURI := fmt.Sprintf(connectionStringTemplate, username, password, clusterEndpoint, readPreference)
 
 		client, err := mongo.NewClient(options.Client().ApplyURI(connectionURI))
